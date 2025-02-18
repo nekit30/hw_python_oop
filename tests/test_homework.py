@@ -1,254 +1,208 @@
 import re
+import inspect
+from typing import Optional
+from datetime import datetime
 
 import pytest
-from django.contrib.admin.sites import site
-from django.contrib.auth import get_user_model
-from django.db.models import fields
-from django.template.loader import get_template, select_template
 
 try:
-    from posts.models import Post
-except ImportError:
-    assert False, 'Не найдена модель Post'
-
-try:
-    from posts.models import Group
-except ImportError:
-    assert False, 'Не найдена модель Group'
+    import homework
+except ModuleNotFoundError:
+    assert False, 'Не найдена домашняя работа'
 
 
-def search_field(fields, attname):
-    for field in fields:
-        if attname == field.attname:
-            return field
-    return None
+class TestRecord:
+    init_records = [{'amount': 1000, 'comment': 'Тестовый коммент'},
+                    {'amount': 1000, 'comment': 'Тестовый коммент', 'date': '01.09.2019'}]
 
-
-def search_refind(execution, user_code):
-    """Поиск запуска"""
-    for temp_line in user_code.split('\n'):
-        if re.search(execution, temp_line):
-            return True
-    return False
-
-
-class TestPost:
-
-    @pytest.mark.django_db(transaction=True)
-    def test_index_view(self, client, post_with_group):
-        try:
-            response = client.get('/')
-        except Exception as e:
-            assert False, f'''Главная страница работает неправильно. Ошибка: `{e}`'''
-        assert response.status_code != 404, (
-            'Главная страница не найдена, проверьте этот адрес в *urls.py*'
-        )
-        assert response.status_code != 500, (
-            'Главная страница не работает. Проверьте ее view-функцию'
-        )
-        assert response.status_code == 200, (
-            'Главная страница работает неправильно.'
-        )
-        # проверка моделей
-        response_text = response.content.decode()
-        posts = Post.objects.all()
-        for p in posts:
-            assert p.text in response_text, (
-                'Убедитесь, что на главной странице выводятся все посты '
-                'с сортировкой по убыванию даты публикации'
+    @pytest.mark.parametrize("kwargs", init_records)
+    def test_init(self, kwargs, msg_err):
+        assert hasattr(homework, 'Record'), msg_err('add_class', 'Record')
+        result = homework.Record(**kwargs)
+        assert hasattr(result, 'amount'), msg_err('add_attr', 'amount', 'Record')
+        assert result.amount == kwargs['amount'], msg_err('wrong_attr', 'amount', 'Record')
+        assert hasattr(result, 'comment'), msg_err('add_attr', 'comment', 'Record')
+        assert result.comment == kwargs.get('comment', ''), msg_err('wrong_attr', 'comment', 'Record')
+        assert hasattr(result, 'date'), msg_err('add_attr', 'date', 'Record')
+        if 'date' in kwargs:
+            date_standard_default_annotation_arg = inspect.Parameter(
+                'date',
+                inspect.Parameter.KEYWORD_ONLY,
+                default=None,
+                annotation=Optional[str],
+            )
+            date_future_default_annotation_arg = inspect.Parameter(
+                'date',
+                inspect.Parameter.KEYWORD_ONLY,
+                annotation='Optional[str]',
+                default=None,
+            )
+            date_default_arg = inspect.Parameter(
+                'date',
+                inspect.Parameter.KEYWORD_ONLY,
+                default=None,
+            )
+            inspect_signature = str(inspect.signature(homework.Record).parameters['date'])
+            assert any([inspect_signature == str(arg) for arg in (date_standard_default_annotation_arg,
+                                                             date_future_default_annotation_arg,
+                                                             date_default_arg)]), \
+                (
+                'В качестве дефолтного аргумента для даты '
+                'не должно быть посчитанное значение или пустая строка'
+            )
+            assert result.date == datetime.strptime(kwargs['date'], '%d.%m.%Y').date(), (
+                msg_err('wrong_attr', 'date', 'Record', ', свойство должно быть датой')
+            )
+        else:
+            assert result.date == datetime.now().date(), (
+                msg_err('wrong_attr', 'date', 'Record', ', свойство должно быть датой')
             )
 
-    def test_post_model(self):
-        model_fields = Post._meta.fields
-        text_field = search_field(model_fields, 'text')
-        assert text_field is not None, 'Добавьте название события `text` модели `Post`'
-        assert type(text_field) == fields.TextField, (
-            'Свойство `text` модели `Post` должно быть текстовым `TextField`'
+        assert not hasattr(result, 'USD_RATE'), msg_err('dont_create_attr', 'USD_RATE', 'Record')
+        assert not hasattr(result, 'EURO_RATE'), msg_err('dont_create_attr', 'EURO_RATE', 'Record')
+
+
+class TestCalculator:
+
+    def test_init(self, init_limit, msg_err):
+        assert hasattr(homework, 'Calculator'), msg_err('add_class', 'Calculator')
+        result = homework.Calculator(init_limit)
+        assert hasattr(result, 'limit'), msg_err('add_attr', 'limit', 'Calculator')
+        assert result.limit == init_limit, msg_err('wrong_attr', 'limit', 'Calculator')
+        assert hasattr(result, 'records'), msg_err('add_attr', 'records', 'Calculator')
+        assert result.records == [], msg_err('wrong_attr', 'records', 'Calculator')
+
+        assert not hasattr(result, 'USD_RATE'), msg_err('dont_create_attr', 'USD_RATE', 'Calculator')
+        assert not hasattr(result, 'EURO_RATE'), msg_err('dont_create_attr', 'EURO_RATE', 'Calculator')
+
+    def test_add_record(self, init_limit, data_records, msg_err):
+        result = homework.Calculator(init_limit)
+        assert hasattr(result, 'add_record'), msg_err('add_method', 'add_record', 'Calculator')
+        records, today, week = data_records
+        for record in records:
+            result.add_record(record)
+        assert result.records == records, msg_err('wrong_attr', 'records', 'Calculator')
+
+    def test_get_today_stats(self, init_limit, data_records, msg_err):
+        result = homework.Calculator(init_limit)
+        records, today, week = data_records
+        for record in records:
+            result.add_record(record)
+        assert hasattr(result, 'get_today_stats'), msg_err('add_method', 'get_today_stats', 'Calculator')
+        assert result.get_today_stats() == today, msg_err('wrong_method', 'get_today_stats', 'Calculator')
+
+    def test_get_week_stats(self, init_limit, data_records, msg_err):
+        result = homework.Calculator(init_limit)
+        records, today, week = data_records
+        for record in records:
+            result.add_record(record)
+        assert hasattr(result, 'get_week_stats'), msg_err('add_method', 'get_week_stats', 'Calculator')
+        assert result.get_week_stats() == week, msg_err('wrong_method', 'get_week_stats', 'Calculator')
+        get_week_stats_inspect = inspect.getsource(result.get_week_stats)
+        get_week_stats_inspect_in_class = inspect.getsource(homework.Calculator)
+        assert (
+            'days=7' in get_week_stats_inspect or
+            'weeks=1' in get_week_stats_inspect or
+            'days=7' in get_week_stats_inspect_in_class or
+            'weeks=1' in get_week_stats_inspect_in_class
+        ), 'Необходимо считать сколько денег потрачено за последние 7 дней'
+
+    def test_get_calories_remained(self, init_limit, msg_err):
+        result = homework.Calculator(init_limit)
+        assert not hasattr(result, 'get_calories_remained'), (
+            msg_err('dont_create_method', 'get_calories_remained', 'Calculator')
         )
 
-        pub_date_field = search_field(model_fields, 'pub_date')
-        assert pub_date_field is not None, 'Добавьте дату и время проведения события `pub_date` модели `Post`'
-        assert type(pub_date_field) == fields.DateTimeField, (
-            'Свойство `pub_date` модели `Post` должно быть датой и время `DateTimeField`'
-        )
-        assert pub_date_field.auto_now_add, 'Свойство `pub_date` модели `Post` должно быть `auto_now_add`'
-
-        author_field = search_field(model_fields, 'author_id')
-        assert author_field is not None, 'Добавьте пользователя, автор который создал событие `author` модели `Post`'
-        assert type(author_field) == fields.related.ForeignKey, (
-            'Свойство `author` модели `Post` должно быть ссылкой на другую модель `ForeignKey`'
-        )
-        assert author_field.related_model == get_user_model(), (
-            'Свойство `author` модели `Post` должно быть ссылкой на модель пользователя `User`'
-        )
-
-        group_field = search_field(model_fields, 'group_id')
-        assert group_field is not None, 'Добавьте свойство `group` в модель `Post`'
-        assert type(group_field) == fields.related.ForeignKey, (
-            'Свойство `group` модели `Post` должно быть ссылкой на другую модель `ForeignKey`'
-        )
-        assert group_field.related_model == Group, (
-            'Свойство `group` модели `Post` должно быть ссылкой на модель `Group`'
-        )
-        assert group_field.blank, (
-            'Свойство `group` модели `Post` должно быть с атрибутом `blank=True`'
-        )
-        assert group_field.null, (
-            'Свойство `group` модели `Post` должно быть с атрибутом `null=True`'
-        )
-
-    @pytest.mark.django_db(transaction=True)
-    def test_post_create(self, user):
-        text = 'Тестовый пост'
-        author = user
-
-        assert Post.objects.all().count() == 0
-
-        post = Post.objects.create(text=text, author=author)
-        assert Post.objects.all().count() == 1
-        assert Post.objects.get(text=text, author=author).pk == post.pk
-
-    def test_post_admin(self):
-        admin_site = site
-
-        assert Post in admin_site._registry, 'Зарегестрируйте модель `Post` в админской панели'
-
-        admin_model = admin_site._registry[Post]
-
-        assert 'text' in admin_model.list_display, (
-            'Добавьте `text` для отображения в списке модели административного сайта'
-        )
-        assert 'pub_date' in admin_model.list_display, (
-            'Добавьте `pub_date` для отображения в списке модели административного сайта'
-        )
-        assert 'author' in admin_model.list_display, (
-            'Добавьте `author` для отображения в списке модели административного сайта'
-        )
-        assert 'group' in admin_model.list_display, (
-            'Добавьте `group` для отображения в списке модели административного сайта'
-        )
-        assert 'pk' in admin_model.list_display, (
-            'Добавьте `pk` для отображения в списке модели административного сайта'
-        )
-        assert 'text' in admin_model.search_fields, (
-            'Добавьте `text` для поиска модели административного сайта'
-        )
-
-        assert 'group' in admin_model.list_editable, (
-            'Добавьте `group` в поля доступные для редактирования в модели административного сайта'
-        )
-
-        assert 'pub_date' in admin_model.list_filter, (
-            'Добавьте `pub_date` для фильтрации модели административного сайта'
-        )
-
-        assert hasattr(admin_model, 'empty_value_display'), (
-            'Добавьте дефолтное значение `-пусто-` для пустого поля'
-        )
-        assert admin_model.empty_value_display == '-пусто-', (
-            'Добавьте дефолтное значение `-пусто-` для пустого поля'
+    def test_get_today_cash_remained(self, init_limit, msg_err):
+        result = homework.Calculator(init_limit)
+        assert not hasattr(result, 'get_today_cash_remained'), (
+            msg_err('dont_create_method', 'get_today_cash_remained', 'Calculator')
         )
 
 
-class TestGroup:
+class TestCaloriesCalculator:
 
-    def test_group_model(self):
-        model_fields = Group._meta.fields
-        title_field = search_field(model_fields, 'title')
-        assert title_field is not None, 'Добавьте название события `title` модели `Group`'
-        assert type(title_field) == fields.CharField, (
-            'Свойство `title` модели `Group` должно быть символьным `CharField`'
+    def test_init(self, init_limit, msg_err):
+        assert hasattr(homework, 'CaloriesCalculator'), (
+            msg_err('add_class', 'CaloriesCalculator', child=True, parent_name='Calculator')
         )
-        assert title_field.max_length == 200, 'Задайте максимальную длину `title` модели `Group` 200'
+        result = homework.CaloriesCalculator(init_limit)
+        assert hasattr(result, 'limit'), msg_err('child_method', 'CaloriesCalculator', 'Calculator')
+        assert result.limit == init_limit, msg_err('child_method', 'CaloriesCalculator', 'Calculator')
 
-        slug_field = search_field(model_fields, 'slug')
-        assert slug_field is not None, 'Добавьте уникальный адрес группы `slug` модели `Group`'
-        assert type(slug_field) == fields.SlugField, (
-            'Свойство `slug` модели `Group` должно быть `SlugField`'
-        )
-        assert slug_field.unique, 'Свойство `slug` модели `Group` должно быть уникальным'
+        assert not hasattr(result, 'USD_RATE'), msg_err('dont_create_attr', 'USD_RATE', 'CaloriesCalculator')
+        assert not hasattr(result, 'EURO_RATE'), msg_err('dont_create_attr', 'EURO_RATE', 'CaloriesCalculator')
 
-        description_field = search_field(model_fields, 'description')
-        assert description_field is not None, 'Добавьте описание `description` модели `Group`'
-        assert type(description_field) == fields.TextField, (
-            'Свойство `description` модели `Group` должно быть текстовым `TextField`'
+    def test_get_calories_remained(self, init_limit, data_records,
+                                   negative_calories_remained, positive_calories_remained, msg_err):
+        result = homework.CaloriesCalculator(init_limit)
+        assert hasattr(result, 'get_calories_remained'), (
+            msg_err('add_method', 'get_calories_remained', 'CaloriesCalculator')
         )
 
-    @pytest.mark.django_db(transaction=True)
-    def test_group_create(self, user):
-        text = 'Тестовый пост'
-        author = user
+        records, today, week = data_records
+        for record in records:
+            result.add_record(record)
 
-        assert Post.objects.all().count() == 0
-
-        post = Post.objects.create(text=text, author=author)
-        assert Post.objects.all().count() == 1
-        assert Post.objects.get(text=text, author=author).pk == post.pk
-
-        title = 'Тестовая группа'
-        slug = 'test-link'
-        description = 'Тестовое описание группы'
-
-        assert Group.objects.all().count() == 0
-        group = Group.objects.create(title=title, slug=slug, description=description)
-        assert Group.objects.all().count() == 1
-        assert Group.objects.get(slug=slug).pk == group.pk
-
-        post.group = group
-        post.save()
-        assert Post.objects.get(text=text, author=author).group == group
+        if today < init_limit:
+            assert result.get_calories_remained() == positive_calories_remained(init_limit - today), (
+                msg_err('wrong_method', 'get_calories_remained', 'CaloriesCalculator')
+            )
+            result.limit = today - 200
+            assert result.get_calories_remained() == negative_calories_remained, (
+                msg_err('wrong_method', 'get_calories_remained', 'CaloriesCalculator')
+            )
+        else:
+            assert result.get_calories_remained() == negative_calories_remained, (
+                msg_err('wrong_method', 'get_calories_remained', 'CaloriesCalculator')
+            )
+            result.limit = today + 200
+            assert result.get_calories_remained() == positive_calories_remained(init_limit - today), (
+                msg_err('wrong_method', 'get_calories_remained', 'CaloriesCalculator')
+            )
 
 
-class TestGroupView:
+class TestCashCalculator:
 
-    @pytest.mark.django_db(transaction=True)
-    def test_group_view(self, client, post_with_group):
-        try:
-            response = client.get(f'/group/{post_with_group.group.slug}')
-        except Exception as e:
-            assert False, f'''Страница `/group/<slug>/` работает неправильно. Ошибка: `{e}`'''
-        if response.status_code in (301, 302):
-            response = client.get(f'/group/{post_with_group.group.slug}/')
-        if response.status_code == 404:
-            assert False, 'Страница `/group/<slug>/` не найдена, проверьте этот адрес в *urls.py*'
-
-        if response.status_code != 200:
-            assert False, 'Страница `/group/<slug>/` работает неправильно.'
-        group = post_with_group.group
-        html = response.content.decode()
-
-        templates_list = ['group_list.html', 'posts/group_list.html']
-        html_template = select_template(templates_list).template.source
-
-        assert search_refind(r'{%\s*for\s+.+in.*%}', html_template), (
-            'Отредактируйте HTML-шаблон, используйте тег цикла'
+    def test_init(self, init_limit, msg_err):
+        assert hasattr(homework, 'CashCalculator'), (
+            msg_err('add_class', 'CashCalculator', child=True, parent_name='Calculator')
         )
-        assert search_refind(r'{%\s*endfor\s*%}', html_template), (
-            'Отредактируйте HTML-шаблон, не найден тег закрытия цикла'
-        )
+        result = homework.CashCalculator(init_limit)
+        assert hasattr(result, 'limit'), msg_err('child_method', 'CashCalculator', 'Calculator')
+        assert result.limit == init_limit, msg_err('child_method', 'CashCalculator', 'Calculator')
 
-        assert re.search(
-            r'<\s*p(\s+class=".+"|\s*)>\s*' + post_with_group.text + r'\s*<\s*\/p\s*>',
-            html
-        ), 'Отредактируйте HTML-шаблон, не найден текст поста `<p>{{ текст_поста }}</p>`'
+        assert hasattr(result, 'EURO_RATE'), msg_err('add_attr', 'EURO_RATE', 'CashCalculator')
+        assert type(result.EURO_RATE) == float, msg_err('wrong_attr', 'EURO_RATE', 'CashCalculator')
+        assert result.EURO_RATE > 0, msg_err('wrong_attr', 'EURO_RATE', 'CashCalculator',
+                                             msg=', курс не может быть равен или меньше 0')
 
-        assert re.search(
-            r'(д|Д)ата публикации:\s*',
-            html
-        ), (
-            'Отредактируйте HTML-шаблон, не найдена дата публикации '
-            '`дата публикации: {{ дата_публикации|date:"d E Y" }}`'
+        assert hasattr(result, 'USD_RATE'), msg_err('add_attr', 'USD_RATE', 'CashCalculator')
+        assert type(result.USD_RATE) == float, msg_err('wrong_attr', 'USD_RATE', 'CashCalculator')
+        assert result.USD_RATE > 0, msg_err('wrong_attr', 'USD_RATE', 'CashCalculator',
+                                            msg=', курс не может быть равен или меньше 0')
+
+    @pytest.mark.parametrize("amount,currency", [
+        (0, 'usd'), (0, 'eur'), (0, 'rub'),
+        (1, 'usd'), (1, 'eur'), (1, 'rub'),
+        (-1, 'usd'), (-1, 'eur'), (-1, 'rub')
+    ])
+    def test_get_today_cash_remained(self, init_limit, data_records, amount, currency, today_cash_remained, msg_err,
+                                     monkeypatch):
+        result = homework.CashCalculator(init_limit)
+        assert hasattr(result, 'get_today_cash_remained'), (
+            msg_err('add_method', 'get_today_cash_remained', 'CashCalculator')
         )
 
-        assert re.search(
-            r'(а|А)втор\:\s' + post_with_group.author.get_full_name(),
-            html,
-        ), (
-            'Отредактируйте HTML-шаблон, не найден автор публикации '
-            '`Автор: {{ полное_имя_автора_поста }},`'
-        )
+        records, today, week = data_records
+        for record in records:
+            result.add_record(record)
 
-        base_template = get_template('base.html').template.source
-        assert re.search(
-            r'{\%\sload static\s\%}', base_template
-        ), 'Загрузите статику в base.html шаблоне'
+        result.EURO_RATE = 70
+        monkeypatch.setattr(homework.CashCalculator, "EURO_RATE", 70)
+        result.USD_RATE = 60
+        monkeypatch.setattr(homework.CashCalculator, "USD_RATE", 60)
+        result.limit = today + (amount * 300)
+        assert re.fullmatch(today_cash_remained(amount, currency), result.get_today_cash_remained(currency)), (
+            msg_err('wrong_method', 'get_today_cash_remained', 'CashCalculator')
+        )
